@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bulk Image Compressor with WebP Option</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f0f4f8;
+    padding: 2rem;
+    color: #222;
+  }
+  h1 {
+    text-align: center;
+    color: #16425b;
+  }
+  #container {
+    max-width: 650px;
+    margin: 2rem auto;
+    background: white;
+    padding: 2rem 2.5rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgb(22 66 91 / 0.2);
+    text-align: center;
+  }
+  input[type="file"] {
+    margin-top: 1rem;
+    cursor: pointer;
+  }
+  #info {
+    font-size: 0.9rem;
+    color: #555;
+    margin-top: 10px;
+  }
+  #compressBtn {
+    margin-top: 1.6rem;
+    background-color: #146c94;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.4rem;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background-color 0.25s ease;
+  }
+  #compressBtn:disabled {
+    background-color: #a9c5db;
+    cursor: not-allowed;
+  }
+  #compressBtn:hover:not(:disabled) {
+    background-color: #0f5670;
+  }
+  #output {
+    margin-top: 2rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+  }
+  .image-item {
+    border: 1px solid #ccc;
+    padding: 0.5rem;
+    border-radius: 8px;
+    width: 150px;
+    background: #fafafa;
+    box-shadow: 0 0 6px #ddd;
+    text-align: center;
+  }
+  .image-item img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 5px;
+  }
+  .download-link {
+    margin-top: 0.6rem;
+    display: inline-block;
+    font-weight: 600;
+    color: #16425b;
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+  #options {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    align-items: center;
+  }
+  label {
+    font-size: 0.95rem;
+  }
+</style>
+</head>
+<body>
+<div id="container">
+  <h1>Bulk Image Compressor</h1>
+  <p id="info">Re-encode multiple images without reducing quality or dimensions. Size reduction possible by converting to WebP (lossless). JPEG re-encoding might increase size.</p>
+  <input type="file" id="images" accept="image/*" multiple />
+  <div id="options">
+    <label><input type="radio" name="format" value="jpeg" checked /> Re-encode as JPEG</label>
+    <label><input type="radio" name="format" value="webp" /> Convert to WebP (lossless)</label>
+  </div>
+  <button id="compressBtn" disabled>Process & Prepare Downloads</button>
+  <div id="output" aria-live="polite"></div>
+</div>
+
+<script>
+  const input = document.getElementById('images');
+  const compressBtn = document.getElementById('compressBtn');
+  const output = document.getElementById('output');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const formatRadios = document.getElementsByName('format');
+
+  let files = [];
+
+  input.addEventListener('change', (e) => {
+    files = Array.from(e.target.files).filter(file => file.type.startsWith('image/'));
+    if (files.length === 0) {
+      compressBtn.disabled = true;
+      output.innerHTML = '';
+      return;
+    }
+    compressBtn.disabled = false;
+    output.innerHTML = '';
+  });
+
+  compressBtn.addEventListener('click', async () => {
+    compressBtn.disabled = true;
+    output.innerHTML = '';
+
+    let selectedFormat = 'jpeg';
+    for(const radio of formatRadios) {
+      if(radio.checked) {
+        selectedFormat = radio.value;
+        break;
+      }
+    }
+
+    for (const file of files) {
+      await processAndDisplay(file, selectedFormat);
+    }
+  });
+
+  async function processAndDisplay(file, format) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+
+          let mimeType = 'image/jpeg';
+          let quality = 0.1;
+
+          if(format === 'webp') {
+            mimeType = 'image/webp';
+            // lossless WebP: quality param ignored by canvas.toBlob, latest browsers implement lossless on webp only by mimeType
+          }
+
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              alert('Failed to process image: ' + file.name);
+              resolve();
+              return;
+            }
+            const url = URL.createObjectURL(blob);
+
+            const div = document.createElement('div');
+            div.classList.add('image-item');
+
+            const imgPreview = document.createElement('img');
+            imgPreview.src = url;
+            imgPreview.alt = file.name;
+            div.appendChild(imgPreview);
+
+            const origSizeKB = (file.size / 1024).toFixed(1);
+            const compSizeKB = (blob.size / 1024).toFixed(1);
+
+            const infoText = document.createElement('div');
+            infoText.style.fontSize = '0.9rem';
+            infoText.style.marginTop = '0.3rem';
+            infoText.textContent = `Orig: ${origSizeKB} KB | Comp: ${compSizeKB} KB`;
+            div.appendChild(infoText);
+
+            const a = document.createElement('a');
+            a.href = url;
+            const ext = format === 'webp' ? 'webp' : 'jpg';
+            a.download = file.name.replace(/\.[^/.]+$/, '') + `-${format}.${ext}`;
+            a.textContent = 'Download';
+            a.className = 'download-link';
+            div.appendChild(a);
+
+            output.appendChild(div);
+
+            resolve();
+          }, mimeType, quality);
+        };
+        img.onerror = () => {
+          alert('Failed to load image: ' + file.name);
+          resolve();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+</script>
+</body>
+</html>
+
